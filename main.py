@@ -9,9 +9,11 @@ import requests
 from bs4 import BeautifulSoup
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QMainWindow, QDialog, QApplication, QMessageBox, QCheckBox, QPushButton, QTableWidget
+from PyQt5.QtCore import QRunnable, Qt, QThreadPool
+
 from PyQt5.uic import loadUi
 from login import Ui_MainWindow
-
+from datetime import datetime
 #login page
 class Login(QMainWindow, Ui_MainWindow):
     def __init__(self, parent = None):
@@ -148,10 +150,76 @@ class Home(QMainWindow, Ui_MainWindow):
         widget.addWidget(login)
         widget.setCurrentIndex(widget.currentIndex() + 1)
 
+# 1. Subclass QRunnable
+class AutoCrawlerData(QRunnable):
+    def __init__(self, url_web):
+        super().__init__() 
+        self.url_web = url_web
+
+    def run(self):
+        while True:
+            print("Loading data...")
+            self.loaddata()
+            time.sleep(10)
+    def loaddata(self):
+        # print("load data")
+        content = requests.get(self.url_web).text
+        soup = BeautifulSoup(content, 'html.parser')
+
+        # #get weather of HN
+        weather_list = []
+        for tag in soup.find_all("span", attrs = {"class":"summary-description-detail align-self-center ms-2"}):
+            weather_list.append(self.text_reg(tag.text))
+        print(weather_list)
+
+        #get temperate min of HN
+        tempmin_list = []
+        for tag in soup.find_all("span", attrs = {"class":"summary-temperature-min"}):
+            tempmin_list.append(self.text_reg(tag.text))
+
+        #get temperature max of HN
+        tempmax_list = []
+        for tag in soup.find_all("span", attrs = {"class":"summary-temperature-max-value"}):
+            tempmax_list.append(self.text_reg(tag.text))
+
+        #get weather HN with diffrent hours
+        hour_list = []
+        for tag in soup.find_all("h2", attrs = {"class":"summary-day text-dark font-h2"}):
+            hour_list.append(self.text_reg(tag.text)[1:-1])
+
+        #convert three arrays to dictionary
+        infor_datas = []
+        for x, y, z, t in zip(weather_list, tempmin_list, tempmax_list, hour_list):
+            infor_data = {'weather': x, 'temp_min': y, 'temp_max': z, 'hour': t}
+            infor_datas.append(infor_data)
+        print("infor_datas",infor_datas)     
+            #save results to json file
+        dict_data = dict(weather = weather_list, temp_min = tempmin_list, temp_max = tempmax_list, hour = hour_list )
+        now = datetime.now()
+
+        current_time = now.strftime("%H:%M:%S")
+        history_data = dict(time = current_time, data= dict_data)
+        
+    
+        list_history = []
+        with open('history_data.json', 'r', encoding = 'utf-8') as fw:
+            list_history = json.load(fw)
+        fw.close()
+        list_history.append(history_data)
+        with open('history_data.json', 'w', encoding='utf-8') as fw:
+            json.dump(list_history, fw, ensure_ascii=False)
+        fw.close()
+        
+    def text_reg(self, data):
+        return re.sub("\r\n\s+", "", data)
+
+    
+
 class Table_HN(QMainWindow, Ui_MainWindow):
     def __init__(self, parent = None, url_web = ""):
         super().__init__(parent)
         self.url_web = url_web
+        self.weather_data = []
         self.setupUi(self)
         loadUi("table.ui", self)       
         self.tableWidget.setColumnWidth(0, 250)
@@ -161,6 +229,15 @@ class Table_HN(QMainWindow, Ui_MainWindow):
         self.backbutton.clicked.connect(self.gotohomefunction)
         self.historybutton.clicked.connect(self.historyfunction)
         self.loaddata()
+        self.show_table()
+        self.runTasks()
+        
+
+            
+    def runTasks(self):
+        pool = QThreadPool.globalInstance()       
+        runnable = AutoCrawlerData(url_web=self.url_web)
+        pool.start(runnable)
 
     
 
@@ -188,55 +265,58 @@ class Table_HN(QMainWindow, Ui_MainWindow):
             weather_list.append(self.text_reg(tag.text))
         print(weather_list)
 
-        # #get temperate min of HN
-        # tempmin_list = []
-        # for tag in soup.find_all("span", attrs = {"class":"summary-temperature-min"}):
-        #     tempmin_list.append(self.text_reg(tag.text))
+        #get temperate min of HN
+        tempmin_list = []
+        for tag in soup.find_all("span", attrs = {"class":"summary-temperature-min"}):
+            tempmin_list.append(self.text_reg(tag.text))
 
-        # #get temperature max of HN
-        # tempmax_list = []
-        # for tag in soup.find_all("span", attrs = {"class":"summary-temperature-max-value"}):
-        #     tempmax_list.append(self.text_reg(tag.text))
+        #get temperature max of HN
+        tempmax_list = []
+        for tag in soup.find_all("span", attrs = {"class":"summary-temperature-max-value"}):
+            tempmax_list.append(self.text_reg(tag.text))
 
-        # #get weather HN with diffrent hours
-        # hour_list = []
-        # for tag in soup.find_all("h2", attrs = {"class":"summary-day text-dark font-h2"}):
-        #     hour_list.append(self.text_reg(tag.text)[1:-1])
+        #get weather HN with diffrent hours
+        hour_list = []
+        for tag in soup.find_all("h2", attrs = {"class":"summary-day text-dark font-h2"}):
+            hour_list.append(self.text_reg(tag.text)[1:-1])
 
-        # #convert three arrays to dictionary
-        # infor_datas = []
-        # for x, y, z, t in zip(weather_list, tempmin_list, tempmax_list, hour_list):
-        #     infor_data = {'weather': x, 'temp_min': y, 'temp_max': z, 'hour': t}
-        #     infor_datas.append(infor_data)
+        #convert three arrays to dictionary
+        infor_datas = []
+        for x, y, z, t in zip(weather_list, tempmin_list, tempmax_list, hour_list):
+            infor_data = {'weather': x, 'temp_min': y, 'temp_max': z, 'hour': t}
+            infor_datas.append(infor_data)
 
 
-        # print("infor_datas",infor_datas)
+        print("infor_datas",infor_datas)
 
-        # self.infor_datas= infor_datas
-        # row = 0
-        # self.tableWidget.setRowCount(len(infor_datas))
-        # for data in infor_datas:
-        #     self.tableWidget.setItem(row, 0, QtWidgets.QTableWidgetItem(data["weather"]))
-        #     self.tableWidget.setItem(row, 1, QtWidgets.QTableWidgetItem(data["temp_min"]))
-        #     self.tableWidget.setItem(row, 2, QtWidgets.QTableWidgetItem(data["temp_max"]))
-        #     self.tableWidget.setItem(row, 3, QtWidgets.QTableWidgetItem(data["hour"]))
-        #     row += 1
-        #     #save results to json file
-        # dict_data = dict(weather = weather_list, temp_min = tempmin_list, temp_max = tempmax_list, hour = hour_list )
+        self.weather_data= infor_datas
+     
+            #save results to json file
+        dict_data = dict(weather = weather_list, temp_min = tempmin_list, temp_max = tempmax_list, hour = hour_list )
+        now = datetime.now()
+
+        current_time = now.strftime("%H:%M:%S")
+        history_data = dict(time = current_time, data= dict_data)
+        
     
-        # list_history = []
-        # with open('history_data.json', 'r', encoding = 'utf-8') as fw:
-        #     list_history = json.load(fw)
-        # fw.close()
-        # list_history.append(dict_data)
-
-        # with open('history_data.json', 'w', encoding='utf-8') as fw:
-        #     json.dump(list_history, fw, ensure_ascii=False)
-        # fw.close()
+        list_history = []
+        with open('history_data.json', 'r', encoding = 'utf-8') as fw:
+            list_history = json.load(fw)
+        fw.close()
+        list_history.append(history_data)
+        with open('history_data.json', 'w', encoding='utf-8') as fw:
+            json.dump(list_history, fw, ensure_ascii=False)
+        fw.close()
         
     def show_table(self):
-        #QWidfetTable: display table on the screen
-        print("show table")
+        row = 0
+        self.tableWidget.setRowCount(len(self.weather_data))
+        for data in self.weather_data:
+            self.tableWidget.setItem(row, 0, QtWidgets.QTableWidgetItem(data["weather"]))
+            self.tableWidget.setItem(row, 1, QtWidgets.QTableWidgetItem(data["temp_min"]))
+            self.tableWidget.setItem(row, 2, QtWidgets.QTableWidgetItem(data["temp_max"]))
+            self.tableWidget.setItem(row, 3, QtWidgets.QTableWidgetItem(data["hour"]))
+            row += 1
 
 #History data
 class History(QMainWindow, Ui_MainWindow):
@@ -246,6 +326,7 @@ class History(QMainWindow, Ui_MainWindow):
         self.history = self.open_file()
         self.setupUi(self)
         loadUi("history.ui", self)
+        self.show()
 
     def open_file(self):
         with open("history_data.json", "r", encoding="utf-8") as fr:
@@ -255,9 +336,9 @@ class History(QMainWindow, Ui_MainWindow):
     def show(self):
         row = 0
         self.tableWidget.setRowCount(len(self.history))
-        for data in self.history:
-            self.tableWidget.setItem(row, 0, QtWidgets.QTableWidgetItem(data["time"]))
-            self.tableWidget.setItem(row, 1, QtWidgets.QTableWidgetItem(data["data"]))
+        for data in self.history:        
+            self.tableWidget.setItem(row, 0, QtWidgets.QTableWidgetItem(str(data['time'])))
+            self.tableWidget.setItem(row, 1, QtWidgets.QTableWidgetItem(str(data['data'])))
             row += 1
 
 
